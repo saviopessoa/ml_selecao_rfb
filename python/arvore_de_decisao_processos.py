@@ -40,17 +40,18 @@ DOWN_ARROW = '\u2193'
 RIGHT_ARROW = '\u2192'
 
 # colunas catégoricas que precisam de conversão
-CAT_COLS = [#'cod_receita','cod_ua_prog', 
+CAT_COLS = ['cod_receita',
+            'cod_ua_prog', 
             'cod_ativ_fiscal', 'cod_motivacao',
-            'cod_cnae_emp', 'uf']
-COLS_TO_DROP = ['cod_receita', 'cod_ua_prog']
+            'cod_cnae_emp', 'uf'] 
+COLS_TO_DROP = ['cod_receita']
 
 # parâmetros
-CRITERION = 'entropy'
-#CRITERION = 'gini'
+#CRITERION = 'entropy'
+CRITERION = 'gini'
 START_CCP_ALPHA = 0
 STEP_CCP_ALPHA = 100
-MAX_BAD_CCP_ALPHAS = 10
+MAX_BAD_CCP_ALPHAS = 5
 
 
 def plotEfectiveAlphaImpurityOfLeaves(ccp_alphas, impurities, criterion):    
@@ -90,7 +91,7 @@ def plot_nodes_depth_versus_alpha(clfs, tested_ccp_alphas):
 Poda da árvore de decisão usando ccp_alpha.
 https://scikit-learn.org/stable/auto_examples/tree/plot_cost_complexity_pruning.html
 """    
-def improve_accuracy(decision_tree):       
+def improve_accuracy(decision_tree): 
     acuracy_score = decision_tree.score(X_test, y_test)
     print(f"\nIniciando post pruning. Valor inicial da acurácia {acuracy_score:.4f}.")
     
@@ -124,7 +125,7 @@ def improve_accuracy(decision_tree):
                 best_score = score
                 best_alpha = ccp_alpha
                 bad_results = 0
-                print(f' melhor acurácia={best_score:.4f} com alpha_min={best_alpha}')
+                print(f' melhor acurácia={best_score:.4f} com ccp_alpha={best_alpha}')
             elif score != prev_score:
                 if score >= acuracy_score:
                     bad_results = 0
@@ -145,10 +146,19 @@ def improve_accuracy(decision_tree):
     
     return best_alpha
     
-        
+    
+def export_more_important_columns(column_names, importances):
+    data = {'Colunas': column_names, 'Importâncias': importances}
+    df = pd.DataFrame(data)
+    df.to_excel('../dataset/all_importances.xlsx')
+    more_important = df.nlargest(10, 'Importâncias', 'all')
+    more_important.to_excel('../dataset/more_important.xlsx')
+    
+    
 def classify():
     print(f"\nIniciando classificação com árvore de decisão e criterion={CRITERION}.\n")
-    decision_tree = DecisionTreeClassifier(random_state=0, criterion=CRITERION)
+    decision_tree = DecisionTreeClassifier(random_state=0, criterion=CRITERION,
+                                           ccp_alpha=2.8996e-05)
     decision_tree = decision_tree.fit(X_train, y_train)
     print("Acurácia na base de treinamento:", decision_tree.score(X_train, y_train))
     
@@ -164,6 +174,8 @@ def classify():
                              columns=["MAJ. AG. CONT. (prev)", "MAJ. EXON. (prev)", "MAJ. MANT. (prev)"])
     pd.options.display.max_columns = 4
     print(cnf_table)
+    
+    export_more_important_columns(X_train.columns, decision_tree.feature_importances_)
     
     improve_accuracy(decision_tree)
     
@@ -186,16 +198,20 @@ def classify():
 
 
 start = timer()
-
+   
 processos = pd.read_excel('../dataset/processos_2014_2015_anon_opf.xlsx', sheet_name=0) 
+
+cat_cols = [x for x in CAT_COLS if x not in COLS_TO_DROP]   
 if (len(COLS_TO_DROP) > 0):
-    processos.drop(columns=COLS_TO_DROP)
+    processos.drop(columns=COLS_TO_DROP, inplace=True)
     print(f"\nTestes sem a presença da(s) coluna(s) {COLS_TO_DROP}")
+    print(f'Colunas categóricas restantes além da operação fiscal: {cat_cols}') # TODO tirar
+    pd.DataFrame({'Colunas': processos.columns}).to_csv('../dataset/processos_drop.csv') # TODO tirar
 print("\nDimensões do dataset: {0}".format(processos.shape))
 
 
 X = processos.iloc[:,0:(processos.shape[1] - 1)]
-X_dummies = pd.get_dummies(X, columns=CAT_COLS)
+X_dummies = pd.get_dummies(X, columns=cat_cols)
 
 le = LabelEncoder()
 y = le.fit_transform(processos.iloc[:,(processos.shape[1] - 1)])
